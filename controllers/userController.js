@@ -70,7 +70,14 @@ const login=async (req,res) => {
             sameSite:process.env.NODE_ENV==="production"?"none":"lax",
             maxAge:24*60*60*1000
         })
-        res.status(200).json({message:"Login successful"})
+        res.status(200).json({message:"Login successful",
+            user:{
+                email:user.email,
+                name:user.name,
+                role:user.role,
+                id:user._id
+            }
+        })
 
     } catch (error) {
         console.log(error)

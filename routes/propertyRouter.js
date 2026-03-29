@@ -17,7 +17,7 @@ propertyRouter.get('/getProperty/:id',getPropertyById)
 
 
 //Update Property by id
-propertyRouter.patch('/updateProperty/:id',updateProperty)
+propertyRouter.put('/updateProperty/:id',updateProperty)
 
 //deletye property ny id
 propertyRouter.delete('/deleteProperty/:id',deleteProperty)
