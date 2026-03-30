@@ -85,6 +85,22 @@ const searchProperties=async (req,res)=>{
 const createProperty=async (req,res)=>{
     try {
         console.log('Received property data:',req.body)
+
+        // Check if property with same ID already exists
+        const existingProperty = await Property.findOne({ id: req.body.id });
+        
+        if (existingProperty) {
+            console.log('⚠️ Property ID already exists:', req.body.id);
+            return res.status(409).json({
+                success: false,
+                message: `Property with ID "${req.body.id}" already exists. Please use a different ID.`,
+                existingProperty: {
+                    id: existingProperty.id,
+                    title: existingProperty.title
+                }
+            });
+        }
+        
         //Convert string numbers to actual numbers
         const propertyData={
             ...req.body,
