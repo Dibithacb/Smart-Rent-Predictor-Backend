@@ -1,7 +1,8 @@
 const User=require('../models/userSchema')
 const bcrypt=require('bcrypt')
 const generateToken=require('../utils/generateToken')
-
+const crypto=require('crypto')
+const {sendResetEmail}=require('../config/email')
 const register = async (req, res) => {
     try {
 
@@ -351,5 +352,165 @@ const getFavoriteCount=async (req,res) => {
     }
 }
 
-module.exports={register,login,checkUser,logout,addFavorite,removeFavorite,checkFavorite,getFavorites,getFavoriteCount}
+// Forgot Password - Complete version with error logging
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    console.log('🔍 Forgot password request for:', email);
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email address is required'
+      });
+    }
+
+    const user = await User.findOne({ email });
+    
+    if (!user) {
+      console.log('❌ User not found:', email);
+      return res.status(200).json({
+        success: true,
+        message: 'If an account exists with this email, you will receive password reset instructions.'
+      });
+    }
+
+    console.log('✅ User found:', user.email);
+
+    // Generate reset token
+    const crypto = require('crypto');
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = Date.now() + 3600000; // 1 hour
+
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = resetExpires;
+    await user.save();
+
+    // Create reset URL
+    const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+    
+    console.log('=' .repeat(60));
+    console.log('🔗 PASSWORD RESET LINK:');
+    console.log(resetUrl);
+    console.log('=' .repeat(60));
+    
+    // ✅ IMPORTANT: Return the reset link in response
+    res.status(200).json({
+      success: true,
+      message: 'Password reset instructions have been sent to your email.',
+      resetLink: resetUrl  // This is the key line
+    });
+
+  } catch (error) {
+    console.error('❌ Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing request',
+      error: error.message
+    });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    
+    console.log('🔍 Reset password request with token:', token?.substring(0, 20) + '...');
+    
+    if (!token || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token and new password are required'
+      });
+    }
+
+    // Validate password strength
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long'
+      });
+    }
+
+    // Find user with valid token
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      console.log('❌ Invalid or expired token');
+      return res.status(400).json({
+        success: false,
+        message: 'Password reset token is invalid or has expired.'
+      });
+    }
+
+    console.log('✅ User found:', user.email);
+
+    // Hash new password
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update user
+    user.password = hashedPassword;
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    await user.save();
+
+    console.log('✅ Password reset successfully for:', user.email);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password has been reset successfully. You can now login with your new password.'
+    });
+
+  } catch (error) {
+    console.error('❌ Reset password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error resetting password',
+      error: error.message
+    });
+  }
+};
+
+// Verify reset token
+const verifyResetToken = async (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    console.log('🔍 Verifying token:', token?.substring(0, 20) + '...');
+    
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      console.log('❌ Invalid or expired token');
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset token'
+      });
+    }
+
+    console.log('✅ Token verified for user:', user.email);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Token is valid'
+    });
+
+  } catch (error) {
+    console.error('❌ Verify token error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error verifying token'
+    });
+  }
+};
+
+module.exports={register,login,checkUser,logout,addFavorite,removeFavorite,checkFavorite,getFavorites,getFavoriteCount,forgotPassword,resetPassword,verifyResetToken}
 

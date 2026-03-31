@@ -36,6 +36,15 @@ const userSchema=new mongoose.Schema({
         }],
         default: [] // 👈 Set default empty array
     },
+    // Password reset fields
+    resetPasswordToken: {
+        type: String,
+        default: null
+    },
+    resetPasswordExpires: {
+        type: Date,
+        default: null
+    },
     created_at:{
         type:Date,
         default:Date.now
