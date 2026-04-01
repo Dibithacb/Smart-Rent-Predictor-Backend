@@ -3,6 +3,7 @@ const bcrypt=require('bcrypt')
 const generateToken=require('../utils/generateToken')
 const crypto=require('crypto')
 const {sendResetEmail}=require('../config/email')
+const Property=require('../models/propertySchema')
 const register = async (req, res) => {
     try {
 
@@ -287,30 +288,57 @@ const checkFavorite=async (req,res) => {
 
 //Get all favorites for user
 const getFavorites=async (req,res) => {
-    try {
-        const userEmail=req.user?.user
-        const user=await User.findOne({email:userEmail})
-        .populate('favorites')
-
+     try {
+        const userEmail = req.user?.user;
+        
+        // Get user with favorites
+        const user = await User.findOne({ email: userEmail });
+        
         if (!user) {
             return res.status(404).json({
                 success: false,
                 message: 'User not found'
             });
         }
-
+        
+        console.log('Favorite IDs from user:', user.favorites);
+        console.log('Number of favorite IDs:', user.favorites.length);
+        
+        // Find which properties actually exist
+        const existingProperties = await Property.find({
+            _id: { $in: user.favorites }
+        });
+        
+        console.log('Existing properties found:', existingProperties.length);
+        console.log('Existing property IDs:', existingProperties.map(p => p._id));
+        
+        // Find missing properties
+        const existingIds = existingProperties.map(p => p._id.toString());
+        const missingIds = user.favorites.filter(id => !existingIds.includes(id.toString()));
+        console.log('Missing property IDs:', missingIds);
+        
+        // Now populate and return
+        const populatedUser = await User.findOne({ email: userEmail })
+            .populate('favorites');
+        
         res.status(200).json({
             success: true,
-            favorites: user.favorites || []
+            favorites: populatedUser.favorites || [],
+            debug: {
+                totalIds: user.favorites.length,
+                existingCount: existingProperties.length,
+                missingCount: missingIds.length,
+                missingIds: missingIds
+            }
         });
-
+        
     } catch (error) {
-            console.error('Error getting favorites:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error getting favorites',
-                error: error.message
-            });
+        console.error('Error getting favorites:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error getting favorites',
+            error: error.message
+        });
     }
 }
 
