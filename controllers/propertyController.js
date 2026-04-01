@@ -132,15 +132,14 @@ const createProperty=async (req,res)=>{
 //update property
 const updateProperty=async (req,res)=>{
     try {
-       const propertyId = req.params.id;
-        const { removedImages, ...updateData } = req.body;
+        const { id } = req.params;
+        const updateData = req.body;
         
-        console.log('📝 Updating property:', propertyId);
-        console.log('🗑️ Images to remove:', removedImages);
+        console.log('🔍 Updating property ID:', id);
+        console.log('📦 Received update data:', JSON.stringify(updateData, null, 2));
         
-        // Find existing property
-        const existingProperty = await Property.findById(propertyId);
-        
+        // Check if property exists
+        const existingProperty = await Property.findById(id);
         if (!existingProperty) {
             return res.status(404).json({
                 success: false,
@@ -148,42 +147,143 @@ const updateProperty=async (req,res)=>{
             });
         }
         
-        // Handle removed images - just filter them out from the array
-        if (removedImages && removedImages.length > 0) {
-            const currentImages = existingProperty.images || [];
-            const updatedImages = currentImages.filter(img => !removedImages.includes(img));
-            updateData.images = updatedImages;
-            
-            console.log('📸 Original images count:', currentImages.length);
-            console.log('🗑️ Removed images count:', removedImages.length);
-            console.log('✅ Updated images count:', updatedImages.length);
+        // Prepare update data to match the schema
+        const mappedData = {};
+        
+        // Basic fields
+        if (updateData.title !== undefined) mappedData.title = updateData.title;
+        if (updateData.description !== undefined) mappedData.description = updateData.description;
+        if (updateData.price !== undefined) mappedData.price = updateData.price;
+        if (updateData.predictedPrice !== undefined) mappedData.predictedPrice = updateData.predictedPrice;
+        if (updateData.priceTrend !== undefined) mappedData.priceTrend = updateData.priceTrend;
+        if (updateData.type !== undefined) mappedData.type = updateData.type; // Schema uses 'type', not 'propertyType'
+        if (updateData.bedrooms !== undefined) mappedData.bedrooms = updateData.bedrooms;
+        if (updateData.bathrooms !== undefined) mappedData.bathrooms = updateData.bathrooms;
+        if (updateData.sqft !== undefined) mappedData.sqft = updateData.sqft;
+        if (updateData.rating !== undefined) mappedData.rating = updateData.rating;
+        if (updateData.reviews !== undefined) mappedData.reviews = updateData.reviews;
+        if (updateData.status !== undefined) mappedData.status = updateData.status;
+        
+        // Handle location (schema expects lat, lng, area, emirate)
+        if (updateData.location) {
+            mappedData.location = {
+                lat: updateData.location.lat || existingProperty.location.lat,
+                lng: updateData.location.lng || existingProperty.location.lng,
+                area: updateData.location.area || existingProperty.location.area,
+                emirate: updateData.location.emirate || existingProperty.location.emirate
+            };
         }
         
-        // Update the property in MongoDB
-        const property = await Property.findByIdAndUpdate(
-            propertyId,
-            updateData,
+        // Handle amenities
+        if (updateData.amenities !== undefined) {
+            mappedData.amenities = updateData.amenities;
+        }
+        
+        // Handle images
+        if (updateData.images !== undefined) {
+            mappedData.images = updateData.images;
+        }
+        
+        // Handle features - match the featuresSchema
+        if (updateData.features) {
+            mappedData.features = {};
+            
+            // Map frontend fields to schema fields
+            if (updateData.features.furnished !== undefined) 
+                mappedData.features.furnished = updateData.features.furnished;
+            
+            // Map view (frontend) to appropriate schema fields
+            const viewType = updateData.features.view;
+            if (viewType) {
+                switch(viewType) {
+                    case 'waterfront':
+                        mappedData.features.waterfront = true;
+                        break;
+                    case 'sea':
+                        mappedData.features.seaView = true;
+                        break;
+                    case 'city':
+                        mappedData.features.cityView = true;
+                        break;
+                    case 'golf':
+                        mappedData.features.golfView = true;
+                        break;
+                    case 'garden':
+                        mappedData.features.garden = true;
+                        break;
+                    case 'pool':
+                        mappedData.features.pool = true;
+                        break;
+                    default:
+                        mappedData.features.view = viewType;
+                }
+            }
+            
+            // Map floor
+            if (updateData.features.floor !== undefined) 
+                mappedData.features.floor = updateData.features.floor;
+            
+            // Handle other features
+            if (updateData.features.maidRoom !== undefined) 
+                mappedData.features.maidRoom = updateData.features.maidRoom;
+            if (updateData.features.studyRoom !== undefined) 
+                mappedData.features.studyRoom = updateData.features.studyRoom;
+            if (updateData.features.privatePool !== undefined) 
+                mappedData.features.privatePool = updateData.features.privatePool;
+            if (updateData.features.beachFront !== undefined) 
+                mappedData.features.beachFront = updateData.features.beachFront;
+        }
+        
+        // Update updatedAt timestamp
+        mappedData.updatedAt = new Date();
+        
+        console.log('📝 Mapped data for update:', JSON.stringify(mappedData, null, 2));
+        
+        // Update property
+        const updatedProperty = await Property.findByIdAndUpdate(
+            id,
+            { $set: mappedData },
             { 
-                new: true, 
-                runValidators: true,
-                context: 'query'
+                new: true,           // Return updated document
+                runValidators: true  // Run schema validation
             }
         );
         
-        console.log('✅ Property updated successfully:', property.id);
+        console.log('✅ Property updated successfully');
         
         res.status(200).json({
             success: true,
             message: 'Property updated successfully',
-            data: property
+            data: updatedProperty
         });
+        
     } catch (error) {
-        console.error('Error updating property:',error)
+        console.error('❌ Error updating property:', error);
+        
+        // Handle validation errors
+        if (error.name === 'ValidationError') {
+            const errors = Object.values(error.errors).map(err => err.message);
+            return res.status(400).json({
+                success: false,
+                message: 'Validation error',
+                errors: errors
+            });
+        }
+        
+        // Handle duplicate key errors
+        if (error.code === 11000) {
+            return res.status(400).json({
+                success: false,
+                message: 'Duplicate field value',
+                field: Object.keys(error.keyPattern)[0]
+            });
+        }
+        
         res.status(500).json({
-            success:false,
+            success: false,
             message: 'Error updating property',
             error: error.message
-        })
+        });
     }
 }
 
