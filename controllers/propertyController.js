@@ -132,25 +132,51 @@ const createProperty=async (req,res)=>{
 //update property
 const updateProperty=async (req,res)=>{
     try {
-         const propertyId = req.params?.id;
-        const property=await Property.findByIdAndUpdate(
-            propertyId,
-            req.body,
-            {new:true,runValidators:true}
-         )
-
-         if(!property){
+       const propertyId = req.params.id;
+        const { removedImages, ...updateData } = req.body;
+        
+        console.log('📝 Updating property:', propertyId);
+        console.log('🗑️ Images to remove:', removedImages);
+        
+        // Find existing property
+        const existingProperty = await Property.findById(propertyId);
+        
+        if (!existingProperty) {
             return res.status(404).json({
-                success:false,
-                message:'Property not found'
-            })
-         }
-
-         res.status(200).json({
-            success:true,
-            message:'Property updated successfully',
-            data:property
-         })
+                success: false,
+                message: 'Property not found'
+            });
+        }
+        
+        // Handle removed images - just filter them out from the array
+        if (removedImages && removedImages.length > 0) {
+            const currentImages = existingProperty.images || [];
+            const updatedImages = currentImages.filter(img => !removedImages.includes(img));
+            updateData.images = updatedImages;
+            
+            console.log('📸 Original images count:', currentImages.length);
+            console.log('🗑️ Removed images count:', removedImages.length);
+            console.log('✅ Updated images count:', updatedImages.length);
+        }
+        
+        // Update the property in MongoDB
+        const property = await Property.findByIdAndUpdate(
+            propertyId,
+            updateData,
+            { 
+                new: true, 
+                runValidators: true,
+                context: 'query'
+            }
+        );
+        
+        console.log('✅ Property updated successfully:', property.id);
+        
+        res.status(200).json({
+            success: true,
+            message: 'Property updated successfully',
+            data: property
+        });
     } catch (error) {
         console.error('Error updating property:',error)
         res.status(500).json({
